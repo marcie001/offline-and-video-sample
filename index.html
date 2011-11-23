@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html manifest="manifest.appcache">
+<head>
+<meta charset="utf-8" />
+<title>video sample</title>
+<style>
+video { display: none; }
+#container {
+    width: 100%;
+    display: -webkit-box;
+}
+#left_column {
+    width: 640px;
+}
+#right_column {
+    width: 300px;
+    padding: 10px;
+}
+</style>
+<script type="text/javascript">
+window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB;
+window.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange;
+window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction;
+var samples = {};
+samples.indexedDB = {};
+samples.indexedDB.db = null;
+samples.indexedDB.open = function () {
+    var request = indexedDB.open('videocaptures');
+    request.onsuccess = function (e) {
+        console.log('Opened db');
+        var v = '1.1';
+        samples.indexedDB.db = e.target.result;
+        var db = samples.indexedDB.db;
+        if (v != db.version) {
+            var setVrequest = db.setVersion(v);
+            setVrequest.onfailure = samples.indexedDB.onerror;
+            setVrequest.onsuccess = function (e) {
+                var store = db.createObjectStore('capture', {keyPath: 'timestamp'});
+                samples.indexedDB.getAllCaptures();
+            };
+        } else {
+            samples.indexedDB.getAllCaptures();
+        }
+    };
+    request.onfailure = samples.indexedDB.onerror;
+};
+samples.indexedDB.addCapture = function (imageData) {
+    var db = samples.indexedDB.db;
+    var trans = db.transaction(['capture'], IDBTransaction.READ_WRITE);
+    var store = trans.objectStore('capture');
+    // put に似たようなメソッドに add がある。add は key が同じオブジェクトの追加を許さない。
+    // put は key が同じオブジェクトを追加すると上書きする。
+    var request = store.put({
+        'timestamp': new Date().getTime(),
+        'data': imageData.src,
+        'width': imageData.width
+    });
+    request.onsuccess = function (e) {
+        console.log('success');
+        console.log(e);
+    };
+    request.onerror = function (e) {
+        console.log(e.value);
+    };
+};
+samples.indexedDB.getAllCaptures = function() {
+    console.log('get all captures');
+    var output = document.querySelector('output');
+    output.innerHTML = '';
+    var db = samples.indexedDB.db;
+    var trans = db.transaction(["capture"], IDBTransaction.READ_ONLY);
+    var store = trans.objectStore("capture");
+
+    var keyRange = IDBKeyRange.lowerBound(0);
+    var cursorRequest = store.openCursor(keyRange, webkitIDBCursor.PREV);
+    cursorRequest.onsuccess = function (e) {
+        var result = e.target.result;
+        if (!!result == false) {
+            return;
+        }
+        renderImage(result.value);
+        result.continue();
+    };
+    cursorRequest.onerror = samples.indexedDB.onerror;
+};
+function renderImage(row) {
+    var output = document.querySelector('output');
+    var img = document.createElement('img');
+    img.src = row.data;
+    img.width = row.width;
+
+    output.insertBefore(img);
+}
+
+addEventListener('DOMContentLoaded', function () {
+    samples.indexedDB.open();
+
+    var video = document.querySelector('video');
+    
+    var canvas = document.querySelector('canvas');
+    var ctx = canvas.getContext('2d');
+    
+    video.addEventListener('play', function () {
+        canvas.width = this.videoWidth;
+        canvas.height = this.videoHeight;
+    
+        setInterval(function () {
+            ctx.drawImage(video, 0, 0);
+        }, 40);
+    }, false);
+
+    var output = document.querySelector('output');
+    canvas.addEventListener('click', function() {
+        var data = canvas.toDataURL('image/jpeg');
+
+        var img = document.createElement('img');
+        img.src = data;
+        img.width = 200;
+
+        samples.indexedDB.addCapture(img);
+
+        output.insertBefore(img, output.firstChild);
+
+    }, false);
+
+}, false);
+addEventListener('click', function (e) {
+    if (e.target.tagName.toLowerCase() == 'img') {
+        document.location.href = e.target.src.replace('image/jpeg', 'image/octet-stream');
+    }
+}, true);
+</script>
+</head>
+<body>
+<div id="container">
+  <div id="left_column">
+    <video poster="sample.png" src="sample.webm" autoplay ></video>
+    <canvas></canvas>
+  </div>
+  <div id="right_column">
+    <!-- 処理結果を出力するためのタグ -->
+    <output></output>
+  </div>
+</div>
+</body>
+</html>

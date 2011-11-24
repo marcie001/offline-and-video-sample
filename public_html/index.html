@@ -1,9 +1,13 @@
 <!DOCTYPE html>
-<html manifest="manifest.appcache">
+<html >
 <head>
 <meta charset="utf-8" />
+<link href='http://fonts.googleapis.com/css?family=Iceland' rel='stylesheet' type='text/css'>
 <title>video sample</title>
 <style>
+body {
+    font-family: 'Iceland', cursive;
+}
 video { display: none; }
 #container {
     width: 100%;
@@ -15,6 +19,13 @@ video { display: none; }
 #right_column {
     width: 300px;
     padding: 10px;
+}
+#trash {
+    height: 100px;
+    border: 1px dashed gray;
+    margin-bottom: 8px;
+    border-radius: 20px 15px;
+    padding: 5px 15px;
 }
 </style>
 <script type="text/javascript">
@@ -51,7 +62,7 @@ samples.indexedDB.addCapture = function (imageData) {
     // put に似たようなメソッドに add がある。add は key が同じオブジェクトの追加を許さない。
     // put は key が同じオブジェクトを追加すると上書きする。
     var request = store.put({
-        'timestamp': new Date().getTime(),
+        'timestamp': imageData.dataset.timestamp,
         'data': imageData.src,
         'width': imageData.width
     });
@@ -68,8 +79,8 @@ samples.indexedDB.getAllCaptures = function() {
     var output = document.querySelector('output');
     output.innerHTML = '';
     var db = samples.indexedDB.db;
-    var trans = db.transaction(["capture"], IDBTransaction.READ_ONLY);
-    var store = trans.objectStore("capture");
+    var trans = db.transaction(['capture'], IDBTransaction.READ_ONLY);
+    var store = trans.objectStore('capture');
 
     var keyRange = IDBKeyRange.lowerBound(0);
     var cursorRequest = store.openCursor(keyRange, webkitIDBCursor.PREV);
@@ -83,11 +94,22 @@ samples.indexedDB.getAllCaptures = function() {
     };
     cursorRequest.onerror = samples.indexedDB.onerror;
 };
+samples.indexedDB.remove = function(timestamp) {
+    var db = samples.indexedDB.db;
+    var request = db.transaction(['capture'], IDBTransaction.READ_WRITE).objectStore('capture').delete(String(timestamp));
+    request.onsuccess = function (e) {
+        console.log('delete data: ' + timestamp);
+    };
+    request.onerror = samples.indexedDB.onerror;
+};
+
 function renderImage(row) {
     var output = document.querySelector('output');
     var img = document.createElement('img');
     img.src = row.data;
+    img.draggable = true;
     img.width = row.width;
+    img.dataset.timestamp = row.timestamp;
 
     output.insertBefore(img);
 }
@@ -116,6 +138,8 @@ addEventListener('DOMContentLoaded', function () {
         var img = document.createElement('img');
         img.src = data;
         img.width = 200;
+        img.draggable = true;
+        img.dataset.timestamp = new Date().getTime();
 
         samples.indexedDB.addCapture(img);
 
@@ -123,23 +147,49 @@ addEventListener('DOMContentLoaded', function () {
 
     }, false);
 
+
+    var trash = document.querySelector('#trash');
+    trash.addEventListener('dragenter', function (e) {
+        console.log('dragenter');
+        e.preventDefault();
+    }, false);
+    trash.addEventListener('dragover', function (e) {
+        console.log('dragover');
+        e.preventDefault();
+    }, false);
+    trash.addEventListener('drop', function (e) {
+        var timestamp = e.dataTransfer.getData('Text');
+        e.preventDefault();
+
+        samples.indexedDB.remove(timestamp);
+
+        var elm = document.querySelector('[data-timestamp="' + timestamp + '"]');
+        elm.parentNode.removeChild(elm);
+    }, false);
 }, false);
 addEventListener('click', function (e) {
     if (e.target.tagName.toLowerCase() == 'img') {
         document.location.href = e.target.src.replace('image/jpeg', 'image/octet-stream');
     }
 }, true);
+addEventListener('dragstart', function (e) {
+    console.log('dragstart');
+    if (e.target.tagName.toLowerCase() == 'img') {
+        e.dataTransfer.setData('Text', e.target.dataset.timestamp);
+        e.dataTransfer.dropEffect = 'move';
+    }
+}, true);
 </script>
 </head>
 <body>
 <div id="container">
-  <h1>video capture sample</h1>
   <div id="left_column">
     <video src="sample.webm" autoplay ></video>
     <canvas></canvas>
     <small><a href="http://creativecommons.org/videos/wanna-work-together">original</a></small>
   </div>
   <div id="right_column">
+    <div id="trash">drop capture here to remove.</div>
     <!-- 処理結果を出力するためのタグ -->
     <output></output>
   </div>
